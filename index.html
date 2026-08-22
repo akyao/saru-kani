@@ -381,7 +381,6 @@ var GameScene = new Phaser.Class({
   // ---------------------------------------------------------
   buildUi: function () {
     // --- 上部：サルのHPバー ---
-    this.add.text(20, 8, "サル", { fontFamily: FONT, fontSize: "15px", color: "#ffb3b3" });
     this.monkeyHpText = this.add.text(W - 20, 8, "", {
       fontFamily: FONT, fontSize: "15px", color: "#ffffff"
     }).setOrigin(1, 0);
@@ -394,7 +393,6 @@ var GameScene = new Phaser.Class({
     }).setOrigin(0.5, 0);
 
     // --- 下部：カニのHPバー ---
-    this.add.text(20, H - 58, "カニ", { fontFamily: FONT, fontSize: "15px", color: "#9fe0ff" });
     this.weaponText = this.add.text(W - 20, H - 58, "", {
       fontFamily: FONT, fontSize: "15px", color: "#ffd24d"
     }).setOrigin(1, 0);
@@ -770,7 +768,13 @@ var ResultScene = new Phaser.Class({
       wordWrap: { width: 520 }
     }).setOrigin(0.5);
 
-    this.add.image(W / 2, 380, win ? "crab" : "monkey").setScale(win ? 2.2 : 1.2);
+    var hero = this.add.image(W / 2, 380, win ? "crab" : "monkey").setScale(win ? 2.2 : 1.2);
+    if (win) {
+      // 勝利時はタイトル画面と同じようにカニを上下に揺らす
+      this.tweens.add({
+        targets: hero, y: 364, duration: 500, yoyo: true, repeat: -1, ease: "Sine.easeInOut"
+      });
+    }
 
     var stats = [
       "サル残HP : " + Math.max(0, Math.ceil(d.monkeyHp)) + " / " + MONKEY_MAX_HP,
