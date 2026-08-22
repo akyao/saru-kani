@@ -98,16 +98,39 @@ function buildTextures(scene) {
   g.fillCircle(5, 6, 2);
   g.generateTexture("b_kuri_s", 10, 10);
 
-  // --- Lv4 ウス（巨大な灰色弾） 96x64 ---
+  // --- Lv4 ウス（木製の臼） 96x64 ---
   g.clear();
-  g.fillStyle(0x9aa0a6, 1);
-  g.fillEllipse(48, 32, 88, 56);
-  g.fillStyle(0x777d83, 1);
-  g.fillEllipse(48, 32, 88, 20);            // 胴のくびれ
-  g.fillStyle(0xbfc5cb, 1);
-  g.fillEllipse(48, 12, 76, 18);            // 上面
-  g.fillStyle(0x5c6166, 1);
-  g.fillEllipse(48, 12, 52, 10);            // 臼の穴
+  // 胴。上が広く、下に向かってすぼまり、底で少し張り出す角張った輪郭
+  g.fillStyle(0xa06a33, 1);
+  g.fillPoints([
+    { x: 6, y: 16 }, { x: 90, y: 16 }, { x: 80, y: 46 },
+    { x: 87, y: 62 }, { x: 9, y: 62 }, { x: 16, y: 46 }
+  ], true);
+  // 右側に落とす陰
+  g.fillStyle(0x8a5828, 1);
+  g.fillPoints([
+    { x: 60, y: 16 }, { x: 90, y: 16 }, { x: 80, y: 46 },
+    { x: 87, y: 62 }, { x: 57, y: 62 }
+  ], true);
+  // 木目
+  g.fillStyle(0x7a4a22, 1);
+  g.fillRect(30, 20, 3, 38);
+  g.fillRect(66, 20, 3, 38);
+  g.fillRect(12, 57, 72, 5);                // 接地する台の部分
+  // 天板
+  g.fillStyle(0xc8955a, 1);
+  g.fillPoints([
+    { x: 14, y: 3 }, { x: 82, y: 3 }, { x: 90, y: 16 }, { x: 6, y: 16 }
+  ], true);
+  // 臼の穴
+  g.fillStyle(0x6b4520, 1);
+  g.fillPoints([
+    { x: 30, y: 6 }, { x: 66, y: 6 }, { x: 71, y: 13 }, { x: 25, y: 13 }
+  ], true);
+  g.fillStyle(0x452c13, 1);
+  g.fillPoints([
+    { x: 34, y: 8 }, { x: 62, y: 8 }, { x: 65, y: 12 }, { x: 31, y: 12 }
+  ], true);
   g.generateTexture("b_usu", 96, 64);
 
   // --- 青柿（敵弾） 16x16 ---
