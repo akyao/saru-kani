@@ -2,22 +2,30 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>さるかに合戦 - Monkey Invaders</title>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 <style>
   html, body {
     margin: 0;
     padding: 0;
+    height: 100%;
+    overflow: hidden;
     background: #101018;
     color: #eee;
     font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+    /* タップでのスクロール・拡大・選択・ハイライトを止める */
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
   }
   #game {
-    width: 600px;
-    margin: 0 auto;
+    width: 100%;
+    height: 100%;
   }
-  canvas { display: block; }
+  canvas { display: block; touch-action: none; }
 </style>
 </head>
 <body>
@@ -222,6 +230,7 @@ var TitleScene = new Phaser.Class({
 
     var lines = [
       "← →  カニを左右に移動",
+      "スマホは画面の左半分／右半分をタップし続けて移動",
       "ショットは自動発射",
       "",
       "オレンジの熟した柿を取ると武器がパワーアップ",
@@ -232,16 +241,19 @@ var TitleScene = new Phaser.Class({
       "制限時間 60秒。サルのHPを削り切れば勝利。",
       "時間切れでもサルのHPが3割以下なら勝利や。"
     ];
-    this.add.text(W / 2, 520, lines.join("\n"), {
-      fontFamily: FONT, fontSize: "17px", color: "#cfd6e4", align: "center", lineSpacing: 6
+    this.add.text(W / 2, 490, lines.join("\n"), {
+      fontFamily: FONT, fontSize: "16px", color: "#cfd6e4", align: "center", lineSpacing: 4
     }).setOrigin(0.5, 0);
 
-    var start = this.add.text(W / 2, 740, "SPACE キーでスタート", {
+    var start = this.add.text(W / 2, 765, "SPACE キー / 画面タップでスタート", {
       fontFamily: FONT, fontSize: "26px", color: "#ffffff", fontStyle: "bold"
     }).setOrigin(0.5);
     this.tweens.add({ targets: start, alpha: 0.2, duration: 700, yoyo: true, repeat: -1 });
 
     this.input.keyboard.once("keydown-SPACE", function () {
+      this.scene.start("Game");
+    }, this);
+    this.input.once("pointerdown", function () {
       this.scene.start("Game");
     }, this);
   }
@@ -318,6 +330,23 @@ var GameScene = new Phaser.Class({
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
     this.keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
+
+    // タッチ操作。画面の左半分で左移動、右半分で右移動。
+    // 複数の指が触れている間は、最後に触れた指を優先する。
+    // 同時に3点まで扱う（既定は1点）。再戦でシーンを作り直しても増やしすぎない
+    if (this.input.manager.pointersTotal < 4) {
+      this.input.addPointer(4 - this.input.manager.pointersTotal);
+    }
+    this.touchPointers = [];           // 押された順に保持する
+    // タイトルからタップで開始した指を、そのまま操作に引き継ぐ
+    this.input.manager.pointers.forEach(function (p) {
+      if (p.isDown) { this.touchPointers.push(p); }
+    }, this);
+    this.input.on("pointerdown", function (p) {
+      var i = this.touchPointers.indexOf(p);
+      if (i >= 0) { this.touchPointers.splice(i, 1); }
+      this.touchPointers.push(p);
+    }, this);
 
     // --- UI ---
     this.buildUi();
@@ -618,6 +647,20 @@ var GameScene = new Phaser.Class({
   },
 
   // ---------------------------------------------------------
+  // タッチによる移動方向。-1=左, 1=右, 0=なし
+  // ---------------------------------------------------------
+  touchDir: function () {
+    var arr = this.touchPointers;
+    // 離された指を取り除く（pointerup を取りこぼしても復帰できるようにする）
+    for (var i = arr.length - 1; i >= 0; i--) {
+      if (!arr[i].isDown) { arr.splice(i, 1); }
+    }
+    if (arr.length === 0) { return 0; }
+    // 最後に触れた指の位置で決める。触れたまま横断しても向きが切り替わる
+    return arr[arr.length - 1].x < W / 2 ? -1 : 1;
+  },
+
+  // ---------------------------------------------------------
   // 毎フレーム
   // ---------------------------------------------------------
   update: function (time, delta) {
@@ -633,8 +676,9 @@ var GameScene = new Phaser.Class({
 
     // --- カニの移動 ---
     var speed = 380;
-    var left = this.cursors.left.isDown || this.keyA.isDown;
-    var right = this.cursors.right.isDown || this.keyD.isDown;
+    var touch = this.touchDir();
+    var left = this.cursors.left.isDown || this.keyA.isDown || touch < 0;
+    var right = this.cursors.right.isDown || this.keyD.isDown || touch > 0;
     if (left && !right) {
       this.crab.setVelocityX(-speed);
     } else if (right && !left) {
@@ -750,12 +794,15 @@ var ResultScene = new Phaser.Class({
       fontFamily: FONT, fontSize: "20px", color: "#ffffff", align: "center", lineSpacing: 10
     }).setOrigin(0.5, 0);
 
-    var again = this.add.text(W / 2, 700, "SPACE キーでもう一戦", {
+    var again = this.add.text(W / 2, 700, "SPACE キー / 画面タップでもう一戦", {
       fontFamily: FONT, fontSize: "24px", color: "#ffffff", fontStyle: "bold"
     }).setOrigin(0.5);
     this.tweens.add({ targets: again, alpha: 0.2, duration: 700, yoyo: true, repeat: -1 });
 
     this.input.keyboard.once("keydown-SPACE", function () {
+      this.scene.start("Game");
+    }, this);
+    this.input.once("pointerdown", function () {
       this.scene.start("Game");
     }, this);
   }
@@ -767,8 +814,12 @@ var ResultScene = new Phaser.Class({
 window.game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: "game",
-  width: W,
-  height: H,
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: W,
+    height: H
+  },
   backgroundColor: "#0d1220",
   physics: {
     default: "arcade",
