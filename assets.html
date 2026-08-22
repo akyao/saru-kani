@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>アセットビューア - さるかに合戦</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+<script src="textures.js"></script>
+<style>
+  :root {
+    --bg: #14161c;
+    --panel: #1e2230;
+    --line: #333a4d;
+    --text: #e6e9f0;
+    --muted: #99a2b8;
+    --accent: #ffd24d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  }
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 20px;
+    padding: 14px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  h1 { margin: 0; font-size: 17px; }
+  h1 a { color: var(--muted); font-size: 13px; font-weight: normal; margin-left: 12px; }
+  .control { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .control input[type="range"] { width: 130px; }
+  .zoom-value { color: var(--accent); font-variant-numeric: tabular-nums; min-width: 34px; }
+  /* カードは中身の大きさに合わせて並べる。大小の差が大きいので枠は揃えない */
+  .grid {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px;
+  }
+  .card {
+    flex: 0 0 auto;
+    min-width: 150px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+  }
+  /* 背景の切り替え。市松模様は透明部分を見るため */
+  .stage.game  { background: #0d1220; }
+  .stage.light { background: #f0f0f0; }
+  .stage.check {
+    background-color: #808080;
+    background-image:
+      linear-gradient(45deg, #666 25%, transparent 25%, transparent 75%, #666 75%),
+      linear-gradient(45deg, #666 25%, transparent 25%, transparent 75%, #666 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 8px 8px;
+  }
+  .stage img {
+    /* 拡大しても輪郭をぼかさない */
+    image-rendering: pixelated;
+    flex: none;
+  }
+  .stage img.spin { animation: spin 4s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .meta .key { color: var(--accent); font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .meta .size { color: var(--muted); font-variant-numeric: tabular-nums; }
+  #host { position: absolute; left: -9999px; top: 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>アセットビューア<a href="index.html">← ゲームに戻る</a></h1>
+
+  <label class="control">
+    ズーム
+    <input id="zoom" type="range" min="1" max="10" step="1" value="3">
+    <span class="zoom-value" id="zoomValue">3x</span>
+  </label>
+
+  <label class="control">
+    背景
+    <select id="bg">
+      <option value="game">ゲーム背景</option>
+      <option value="check">市松（透明確認）</option>
+      <option value="light">白</option>
+    </select>
+  </label>
+
+  <label class="control">
+    <input id="spin" type="checkbox">
+    回転させる
+  </label>
+</header>
+
+<div class="grid" id="grid"></div>
+
+<!-- テクスチャ生成のためだけに使う、画面外の Phaser インスタンス -->
+<div id="host"></div>
+
+<script>
+"use strict";
+
+// 生成されたテクスチャを PNG の data URL として取り出す
+function textureToDataUrl(texture) {
+  var src = texture.getSourceImage();
+  if (src instanceof HTMLCanvasElement) { return src.toDataURL(); }
+  // 念のため、canvas 以外が返ってきた場合は描き直して取り出す
+  var c = document.createElement("canvas");
+  c.width = src.width;
+  c.height = src.height;
+  c.getContext("2d").drawImage(src, 0, 0);
+  return c.toDataURL();
+}
+
+function buildGallery(scene) {
+  var grid = document.getElementById("grid");
+
+  scene.textures.getTextureKeys().forEach(function (key) {
+    // Phaser が内部で持つテクスチャは除く
+    if (key.indexOf("__") === 0) { return; }
+
+    var texture = scene.textures.get(key);
+    var img = new Image();
+    img.src = textureToDataUrl(texture);
+    img.dataset.w = texture.source[0].width;
+    img.dataset.h = texture.source[0].height;
+
+    var stage = document.createElement("div");
+    stage.className = "stage";
+    stage.appendChild(img);
+
+    var meta = document.createElement("div");
+    meta.className = "meta";
+    meta.innerHTML =
+      '<span class="key"></span><span class="size"></span>';
+    meta.querySelector(".key").textContent = key;
+    meta.querySelector(".size").textContent =
+      texture.source[0].width + "×" + texture.source[0].height;
+
+    var card = document.createElement("div");
+    card.className = "card";
+    card.appendChild(stage);
+    card.appendChild(meta);
+    grid.appendChild(card);
+  });
+
+  applyZoom();
+  applyBackground();
+  applySpin();
+}
+
+// --- 表示設定 ---
+function eachImage(fn) {
+  Array.prototype.forEach.call(document.querySelectorAll(".stage img"), fn);
+}
+
+function applyZoom() {
+  var z = Number(document.getElementById("zoom").value);
+  document.getElementById("zoomValue").textContent = z + "x";
+
+  eachImage(function (img) {
+    var w = img.dataset.w * z;
+    var h = img.dataset.h * z;
+    img.style.width = w + "px";
+    img.style.height = h + "px";
+    // 回転させると対角線ぶんの余白が要るので、枠は少し広めに取る
+    var stage = img.parentNode;
+    stage.style.width = Math.max(126, Math.ceil(w * 1.45)) + "px";
+    stage.style.height = Math.max(100, Math.ceil(h * 1.45)) + "px";
+  });
+
+}
+
+function applyBackground() {
+  var mode = document.getElementById("bg").value;
+  Array.prototype.forEach.call(document.querySelectorAll(".stage"), function (el) {
+    el.className = "stage " + mode;
+  });
+}
+
+function applySpin() {
+  var on = document.getElementById("spin").checked;
+  eachImage(function (img) { img.classList.toggle("spin", on); });
+}
+
+document.getElementById("zoom").addEventListener("input", applyZoom);
+document.getElementById("bg").addEventListener("change", applyBackground);
+document.getElementById("spin").addEventListener("change", applySpin);
+
+// --- テクスチャを作るためだけに Phaser を起動し、済んだら破棄する ---
+new Phaser.Game({
+  type: Phaser.CANVAS,
+  parent: "host",
+  width: 1,
+  height: 1,
+  scene: {
+    create: function () {
+      buildTextures(this);
+      buildGallery(this);
+      // ギャラリーは data URL の img なので、ゲーム本体は用済み
+      this.game.destroy(true);
+    }
+  }
+});
+</script>
+
+</body>
+</html>
