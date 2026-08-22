@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>さるかに合戦 - Monkey Invaders</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #101018;
+    color: #eee;
+    font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  }
+  #game {
+    width: 600px;
+    margin: 0 auto;
+  }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<script>
+"use strict";
+
+// ============================================================
+// 定数
+// ============================================================
+var W = 600;
+var H = 800;
+
+var MONKEY_MAX_HP = 4000;
+var PLAYER_MAX_HP = 100;
+var TIME_LIMIT = 60;              // 制限時間（秒）
+var WIN_HP_RATE_ON_TIMEUP = 0.3;  // 時間切れ時、この割合以下なら勝利
+
+var MONKEY_Y = 155;               // サルの基準Y
+var BAR_W = 560;                  // HPバーの最大幅
+var FONT = '"Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif';
+
+// 武器レベル定義
+var WEAPONS = [
+  { name: "牛の糞",  cooldown: 260, desc: "茶色の単発直線弾" },
+  { name: "ハチ",    cooldown: 240, desc: "黄と黒の2連ホーミング" },
+  { name: "栗",      cooldown: 520, desc: "サル付近で炸裂" },
+  { name: "ウス",    cooldown: 700, desc: "青柿を消しながら進む" }
+];
+
+// ============================================================
+// テクスチャ生成（画像素材を使わず Graphics で描く）
+// ============================================================
+function buildTextures(scene) {
+  var g = scene.make.graphics({ x: 0, y: 0, add: false });
+
+  // --- カニ（自機） 56x40 ---
+  g.clear();
+  g.fillStyle(0xd83a3a, 1);
+  g.fillEllipse(28, 24, 40, 24);            // 甲羅
+  g.fillStyle(0xb02020, 1);
+  g.fillEllipse(28, 30, 34, 12);            // 甲羅の影
+  g.fillStyle(0xd83a3a, 1);
+  g.fillEllipse(6, 14, 16, 12);             // 左ハサミ
+  g.fillEllipse(50, 14, 16, 12);            // 右ハサミ
+  g.fillStyle(0x101018, 1);
+  g.fillRect(2, 12, 9, 3);                  // ハサミの切れ込み
+  g.fillRect(45, 12, 9, 3);
+  g.fillStyle(0xd83a3a, 1);
+  g.fillRect(12, 34, 4, 6);                 // 脚
+  g.fillRect(20, 36, 4, 4);
+  g.fillRect(32, 36, 4, 4);
+  g.fillRect(40, 34, 4, 6);
+  g.fillStyle(0xffffff, 1);
+  g.fillCircle(21, 18, 5);                  // 目
+  g.fillCircle(35, 18, 5);
+  g.fillStyle(0x000000, 1);
+  g.fillCircle(21, 18, 2.5);
+  g.fillCircle(35, 18, 2.5);
+  g.generateTexture("crab", 56, 40);
+
+  // --- サル（敵） 110x92 ---
+  g.clear();
+  g.fillStyle(0x8a5a30, 1);
+  g.fillCircle(16, 44, 14);                 // 左耳
+  g.fillCircle(94, 44, 14);                 // 右耳
+  g.fillStyle(0xc79a68, 1);
+  g.fillCircle(16, 44, 8);
+  g.fillCircle(94, 44, 8);
+  g.fillStyle(0x8a5a30, 1);
+  g.fillEllipse(55, 46, 76, 72);            // 顔の輪郭
+  g.fillStyle(0xf2d3a8, 1);
+  g.fillEllipse(55, 54, 56, 48);            // 顔の中（肌色）
+  g.fillStyle(0xffffff, 1);
+  g.fillCircle(42, 42, 10);                 // 目
+  g.fillCircle(68, 42, 10);
+  g.fillStyle(0x000000, 1);
+  g.fillCircle(43, 44, 5);
+  g.fillCircle(67, 44, 5);
+  g.fillStyle(0xb5764a, 1);
+  g.fillEllipse(55, 66, 30, 18);            // 口元
+  g.fillStyle(0x000000, 1);
+  g.fillRect(45, 64, 20, 3);                // 口
+  g.fillCircle(50, 58, 2);                  // 鼻
+  g.fillCircle(60, 58, 2);
+  g.generateTexture("monkey", 110, 92);
+
+  // --- Lv1 牛の糞（茶色の単発弾） 14x14 ---
+  g.clear();
+  g.fillStyle(0x6b4224, 1);
+  g.fillCircle(7, 7, 7);
+  g.fillStyle(0x8f5c33, 1);
+  g.fillCircle(5, 5, 3);
+  g.generateTexture("b_dung", 14, 14);
+
+  // --- Lv2 ハチ（黄と黒のホーミング弾） 14x18 ---
+  g.clear();
+  g.fillStyle(0xffe14d, 1);
+  g.fillEllipse(7, 9, 12, 18);
+  g.fillStyle(0x111111, 1);
+  g.fillRect(1, 5, 12, 3);
+  g.fillRect(1, 11, 12, 3);
+  g.fillStyle(0xffffff, 0.7);
+  g.fillEllipse(1, 8, 6, 8);                // 羽
+  g.fillEllipse(13, 8, 6, 8);
+  g.generateTexture("b_bee", 14, 18);
+
+  // --- Lv3 栗（炸裂弾） 20x20 ---
+  g.clear();
+  g.fillStyle(0x5a3316, 1);
+  g.fillEllipse(10, 12, 18, 15);            // 実
+  g.fillStyle(0x8a5228, 1);
+  g.fillEllipse(10, 13, 12, 9);
+  g.fillStyle(0xefe0c0, 1);
+  g.fillEllipse(10, 18, 12, 4);             // 底の白い部分
+  g.fillStyle(0x3a2010, 1);
+  g.fillTriangle(10, 0, 5, 7, 15, 7);       // とんがり
+  g.generateTexture("b_kuri", 20, 20);
+
+  // --- Lv3 栗の破片 10x10 ---
+  g.clear();
+  g.fillStyle(0x5a3316, 1);
+  g.fillCircle(5, 5, 5);
+  g.fillStyle(0xefe0c0, 1);
+  g.fillCircle(5, 6, 2);
+  g.generateTexture("b_kuri_s", 10, 10);
+
+  // --- Lv4 ウス（巨大な灰色弾） 96x64 ---
+  g.clear();
+  g.fillStyle(0x9aa0a6, 1);
+  g.fillEllipse(48, 32, 88, 56);
+  g.fillStyle(0x777d83, 1);
+  g.fillEllipse(48, 32, 88, 20);            // 胴のくびれ
+  g.fillStyle(0xbfc5cb, 1);
+  g.fillEllipse(48, 12, 76, 18);            // 上面
+  g.fillStyle(0x5c6166, 1);
+  g.fillEllipse(48, 12, 52, 10);            // 臼の穴
+  g.generateTexture("b_usu", 96, 64);
+
+  // --- 青柿（敵弾） 16x16 ---
+  g.clear();
+  g.fillStyle(0x2f8f3a, 1);
+  g.fillCircle(8, 8, 7);
+  g.fillStyle(0x7fd18a, 1);
+  g.fillCircle(6, 6, 2.5);
+  g.fillStyle(0x1d5c26, 1);
+  g.fillRect(6, 0, 4, 3);                   // ヘタ
+  g.generateTexture("kaki_blue", 16, 16);
+
+  // --- 熟柿（パワーアップアイテム） 24x24 ---
+  g.clear();
+  g.fillStyle(0xff8a1e, 1);
+  g.fillCircle(12, 13, 10);
+  g.fillStyle(0xffc266, 1);
+  g.fillCircle(9, 10, 3.5);
+  g.fillStyle(0x2f6b2a, 1);
+  g.fillRect(6, 1, 12, 4);                  // ヘタ
+  g.fillRect(10, 0, 4, 4);
+  g.generateTexture("kaki_ripe", 24, 24);
+
+  // --- 1x1 の白ドット（爆発パーティクル用） ---
+  g.clear();
+  g.fillStyle(0xffffff, 1);
+  g.fillRect(0, 0, 4, 4);
+  g.generateTexture("dot", 4, 4);
+
+  g.destroy();
+}
+
+// ============================================================
+// タイトルシーン
+// ============================================================
+var TitleScene = new Phaser.Class({
+  Extends: Phaser.Scene,
+  initialize: function TitleScene() {
+    Phaser.Scene.call(this, { key: "Title" });
+  },
+
+  create: function () {
+    buildTextures(this);
+
+    this.add.rectangle(W / 2, H / 2, W, H, 0x0d1220);
+
+    this.add.text(W / 2, 130, "さるかに合戦", {
+      fontFamily: FONT, fontSize: "56px", color: "#ffd24d", fontStyle: "bold"
+    }).setOrigin(0.5);
+
+    this.add.text(W / 2, 190, "MONKEY  INVADERS", {
+      fontFamily: FONT, fontSize: "22px", color: "#8fd9ff"
+    }).setOrigin(0.5);
+
+    var monkey = this.add.image(W / 2, 300, "monkey");
+    this.tweens.add({
+      targets: monkey, x: { from: W / 2 - 90, to: W / 2 + 90 },
+      duration: 1600, yoyo: true, repeat: -1, ease: "Sine.easeInOut"
+    });
+
+    var crab = this.add.image(W / 2, 430, "crab").setScale(1.4);
+    this.tweens.add({
+      targets: crab, y: 420, duration: 500, yoyo: true, repeat: -1, ease: "Sine.easeInOut"
+    });
+
+    var lines = [
+      "← →  カニを左右に移動",
+      "SPACE  ショット",
+      "",
+      "オレンジの熟した柿を取ると武器がパワーアップ",
+      "緑の青柿に当たるとHPが減る",
+      "",
+      "Lv.1 牛の糞  /  Lv.2 ハチ  /  Lv.3 栗  /  Lv.4 ウス",
+      "",
+      "制限時間 60秒。サルのHPを削り切れば勝利。",
+      "時間切れでもサルのHPが3割以下なら勝利や。"
+    ];
+    this.add.text(W / 2, 520, lines.join("\n"), {
+      fontFamily: FONT, fontSize: "17px", color: "#cfd6e4", align: "center", lineSpacing: 6
+    }).setOrigin(0.5, 0);
+
+    var start = this.add.text(W / 2, 740, "SPACE キーでスタート", {
+      fontFamily: FONT, fontSize: "26px", color: "#ffffff", fontStyle: "bold"
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: start, alpha: 0.2, duration: 700, yoyo: true, repeat: -1 });
+
+    this.input.keyboard.once("keydown-SPACE", function () {
+      this.scene.start("Game");
+    }, this);
+  }
+});
+
+// ============================================================
+// ゲーム本編
+// ============================================================
+var GameScene = new Phaser.Class({
+  Extends: Phaser.Scene,
+  initialize: function GameScene() {
+    Phaser.Scene.call(this, { key: "Game" });
+  },
+
+  create: function () {
+    var self = this;
+
+    // --- 状態 ---
+    this.monkeyHp = MONKEY_MAX_HP;
+    this.playerHp = PLAYER_MAX_HP;
+    this.level = 0;              // 0..3 で WEAPONS のインデックス
+    this.timeLeft = TIME_LIMIT;
+    this.lastShot = 0;
+    this.invincibleUntil = 0;
+    this.gameOver = false;
+
+    // --- 背景 ---
+    this.add.rectangle(W / 2, H / 2, W, H, 0x0d1220);
+    this.starLayer = this.add.group();
+    for (var i = 0; i < 60; i++) {
+      var s = this.add.circle(
+        Phaser.Math.Between(0, W), Phaser.Math.Between(0, H),
+        Phaser.Math.FloatBetween(0.6, 1.8), 0xffffff,
+        Phaser.Math.FloatBetween(0.15, 0.5)
+      );
+      s.speed = Phaser.Math.FloatBetween(8, 30);
+      this.starLayer.add(s);
+    }
+    // 地面のライン
+    this.add.rectangle(W / 2, H - 72, W, 2, 0x2a3550);
+
+    // --- サル ---
+    this.monkey = this.physics.add.image(W / 2, MONKEY_Y, "monkey");
+    this.monkey.setImmovable(true);
+    this.monkey.body.setAllowGravity(false);
+    this.monkey.setVelocityX(120);
+    this.monkey.body.setSize(88, 76);
+
+    // --- カニ ---
+    this.crab = this.physics.add.image(W / 2, H - 90, "crab");
+    this.crab.setCollideWorldBounds(true);
+    this.crab.body.setSize(44, 28);
+
+    // --- グループ ---
+    this.playerBullets = this.physics.add.group();
+    this.enemyBullets = this.physics.add.group();
+    this.items = this.physics.add.group();
+
+    // --- 当たり判定 ---
+    // Phaser は overlap(グループ, 単体) でもコールバック引数を (単体, 子) の順で渡すため、
+    // 混乱を避けて必ず (単体, グループ) の順で登録する
+    this.physics.add.overlap(this.monkey, this.playerBullets, this.hitMonkey, null, this);
+    this.physics.add.overlap(this.crab, this.enemyBullets, this.hitCrab, null, this);
+    this.physics.add.overlap(this.crab, this.items, this.getItem, null, this);
+    // ウスは敵弾を消しながら進む
+    this.physics.add.overlap(this.playerBullets, this.enemyBullets, function (pb, eb) {
+      if (pb.getData("type") === "usu") {
+        self.popDots(eb.x, eb.y, 0x7fd18a, 4);
+        eb.destroy();
+      }
+    }, null, this);
+
+    // --- 入力 ---
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
+    this.keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
+
+    // --- UI ---
+    this.buildUi();
+
+    // --- 敵の攻撃タイマー ---
+    this.fireEvent = this.time.addEvent({
+      delay: 820, loop: true, callback: this.monkeyFire, callbackScope: this
+    });
+    this.aimEvent = this.time.addEvent({
+      delay: 1700, loop: true, callback: this.monkeyAimedFire, callbackScope: this
+    });
+    // 熟柿の投下
+    this.itemEvent = this.time.addEvent({
+      delay: 6000, loop: true, callback: this.dropRipeKaki, callbackScope: this
+    });
+    this.time.delayedCall(2500, this.dropRipeKaki, [], this);
+
+    // --- 秒カウント ---
+    this.secondEvent = this.time.addEvent({
+      delay: 1000, loop: true, callback: function () {
+        if (self.gameOver) { return; }
+        self.timeLeft--;
+        if (self.timeLeft <= 0) {
+          self.timeLeft = 0;
+          self.finish(self.monkeyHp <= MONKEY_MAX_HP * WIN_HP_RATE_ON_TIMEUP);
+        }
+        // 時間が経つほど弾幕が濃くなる
+        var elapsed = TIME_LIMIT - self.timeLeft;
+        self.fireEvent.delay = Math.max(320, 820 - elapsed * 9);
+      }
+    });
+  },
+
+  // ---------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------
+  buildUi: function () {
+    // --- 上部：サルのHPバー ---
+    this.add.text(20, 8, "サル", { fontFamily: FONT, fontSize: "15px", color: "#ffb3b3" });
+    this.monkeyHpText = this.add.text(W - 20, 8, "", {
+      fontFamily: FONT, fontSize: "15px", color: "#ffffff"
+    }).setOrigin(1, 0);
+    this.add.rectangle(W / 2, 36, 564, 14, 0x000000).setStrokeStyle(2, 0x555f78);
+    this.monkeyHpBar = this.add.rectangle(20, 36, BAR_W, 10, 0xff4d4d).setOrigin(0, 0.5);
+
+    // --- 残り時間 ---
+    this.timerText = this.add.text(W / 2, 52, "", {
+      fontFamily: FONT, fontSize: "26px", color: "#ffd24d", fontStyle: "bold"
+    }).setOrigin(0.5, 0);
+
+    // --- 下部：カニのHPバー ---
+    this.add.text(20, H - 58, "カニ", { fontFamily: FONT, fontSize: "15px", color: "#9fe0ff" });
+    this.weaponText = this.add.text(W - 20, H - 58, "", {
+      fontFamily: FONT, fontSize: "15px", color: "#ffd24d"
+    }).setOrigin(1, 0);
+    this.add.rectangle(W / 2, H - 30, 564, 14, 0x000000).setStrokeStyle(2, 0x555f78);
+    this.playerHpBar = this.add.rectangle(20, H - 30, BAR_W, 10, 0x4dd2ff).setOrigin(0, 0.5);
+
+    this.refreshUi();
+  },
+
+  refreshUi: function () {
+    var mr = Phaser.Math.Clamp(this.monkeyHp / MONKEY_MAX_HP, 0, 1);
+    this.monkeyHpBar.width = BAR_W * mr;
+    this.monkeyHpBar.fillColor = mr > 0.5 ? 0xff4d4d : (mr > 0.3 ? 0xffa64d : 0xffe14d);
+    this.monkeyHpText.setText("HP " + Math.max(0, Math.ceil(this.monkeyHp)) + " / " + MONKEY_MAX_HP);
+
+    var pr = Phaser.Math.Clamp(this.playerHp / PLAYER_MAX_HP, 0, 1);
+    this.playerHpBar.width = BAR_W * pr;
+    this.playerHpBar.fillColor = pr > 0.4 ? 0x4dd2ff : 0xff6b6b;
+
+    this.timerText.setText(("00" + Math.ceil(this.timeLeft)).slice(-2));
+    this.timerText.setColor(this.timeLeft <= 10 ? "#ff6b6b" : "#ffd24d");
+
+    var w = WEAPONS[this.level];
+    this.weaponText.setText("Lv." + (this.level + 1) + " " + w.name);
+  },
+
+  // ---------------------------------------------------------
+  // 自機のショット
+  // ---------------------------------------------------------
+  playerFire: function (now) {
+    var w = WEAPONS[this.level];
+    if (now - this.lastShot < w.cooldown) { return; }
+    this.lastShot = now;
+
+    var x = this.crab.x;
+    var y = this.crab.y - 24;
+
+    if (this.level === 0) {
+      // Lv.1 牛の糞：茶色の単発直線弾
+      this.spawnPlayerBullet("b_dung", x, y, 0, -640, "dung", 26);
+
+    } else if (this.level === 1) {
+      // Lv.2 ハチ：2連射のホーミング弾
+      var b1 = this.spawnPlayerBullet("b_bee", x - 14, y, -60, -520, "bee", 15);
+      var b2 = this.spawnPlayerBullet("b_bee", x + 14, y, 60, -520, "bee", 15);
+      b1.setData("homing", true);
+      b2.setData("homing", true);
+
+    } else if (this.level === 2) {
+      // Lv.3 栗：サル付近で分裂する炸裂弾
+      var k = this.spawnPlayerBullet("b_kuri", x, y, 0, -520, "kuri", 30);
+      k.setData("burst", true);
+
+    } else {
+      // Lv.4 ウス：巨大な弾。敵弾を消しながら進む
+      var u = this.spawnPlayerBullet("b_usu", x, y - 20, 0, -380, "usu", 180);
+      u.body.setSize(88, 56);
+      u.setAngularVelocity(60);
+    }
+  },
+
+  spawnPlayerBullet: function (key, x, y, vx, vy, type, damage) {
+    var b = this.playerBullets.create(x, y, key);
+    b.body.setAllowGravity(false);
+    b.setVelocity(vx, vy);
+    b.setData("type", type);
+    b.setData("damage", damage);
+    return b;
+  },
+
+  // ---------------------------------------------------------
+  // 敵の攻撃
+  // ---------------------------------------------------------
+  monkeyFire: function () {
+    if (this.gameOver) { return; }
+    // 扇状にばらまく
+    var n = 3 + Math.floor((TIME_LIMIT - this.timeLeft) / 20);
+    for (var i = 0; i < n; i++) {
+      var ang = Phaser.Math.DegToRad(Phaser.Math.Between(60, 120));
+      var speed = Phaser.Math.Between(180, 300);
+      var b = this.enemyBullets.create(
+        this.monkey.x + Phaser.Math.Between(-30, 30), this.monkey.y + 40, "kaki_blue"
+      );
+      b.body.setAllowGravity(false);
+      b.setVelocity(Math.cos(ang) * speed, Math.sin(ang) * speed);
+      b.setData("damage", 7);
+    }
+  },
+
+  monkeyAimedFire: function () {
+    if (this.gameOver) { return; }
+    // カニを狙った3way
+    var base = Phaser.Math.Angle.Between(this.monkey.x, this.monkey.y, this.crab.x, this.crab.y);
+    for (var i = -1; i <= 1; i++) {
+      var ang = base + i * 0.18;
+      var b = this.enemyBullets.create(this.monkey.x, this.monkey.y + 40, "kaki_blue");
+      b.body.setAllowGravity(false);
+      b.setScale(1.3);
+      b.setTint(0x39c14a);
+      this.physics.velocityFromRotation(ang, 340, b.body.velocity);
+      b.setData("damage", 10);
+    }
+  },
+
+  dropRipeKaki: function () {
+    if (this.gameOver) { return; }
+    var it = this.items.create(Phaser.Math.Between(60, W - 60), this.monkey.y + 40, "kaki_ripe");
+    it.body.setAllowGravity(false);
+    it.setVelocity(Phaser.Math.Between(-40, 40), Phaser.Math.Between(110, 160));
+    var spin = this.tweens.add({ targets: it, angle: 360, duration: 2000, repeat: -1 });
+    it.once("destroy", function () { spin.remove(); });
+  },
+
+  // ---------------------------------------------------------
+  // 当たったとき
+  // ---------------------------------------------------------
+  hitMonkey: function (monkey, bullet) {
+    if (this.gameOver) { return; }
+    var dmg = bullet.getData("damage") || 10;
+    this.monkeyHp -= dmg;
+
+    this.popDots(bullet.x, bullet.y, 0xffe14d, 6);
+    this.cameras.main.shake(60, 0.004);
+    monkey.setTintFill(0xffffff);
+    this.time.delayedCall(60, function () { monkey.clearTint(); });
+
+    // ウスは1発では消えず、少しだけ貫通する
+    if (bullet.getData("type") === "usu") {
+      var hits = (bullet.getData("hits") || 0) + 1;
+      bullet.setData("hits", hits);
+      bullet.setData("damage", 50);
+      if (hits >= 4) { bullet.destroy(); }
+    } else {
+      bullet.destroy();
+    }
+
+    if (this.monkeyHp <= 0) {
+      this.monkeyHp = 0;
+      this.finish(true);
+    }
+    this.refreshUi();
+  },
+
+  hitCrab: function (crab, bullet) {
+    if (this.gameOver) { return; }
+    bullet.destroy();
+    if (this.time.now < this.invincibleUntil) { return; }
+
+    this.playerHp -= (bullet.getData("damage") || 7);
+    this.invincibleUntil = this.time.now + 700;
+    this.popDots(crab.x, crab.y, 0xff6b6b, 8);
+    this.cameras.main.shake(120, 0.008);
+
+    this.tweens.add({
+      targets: crab, alpha: 0.2, duration: 100, yoyo: true, repeat: 3,
+      onComplete: function () { crab.setAlpha(1); }
+    });
+
+    if (this.playerHp <= 0) {
+      this.playerHp = 0;
+      this.finish(false);
+    }
+    this.refreshUi();
+  },
+
+  getItem: function (crab, item) {
+    if (this.gameOver) { return; }
+    item.destroy();
+    this.popDots(crab.x, crab.y - 20, 0xff8a1e, 12);
+
+    var msg;
+    if (this.level < WEAPONS.length - 1) {
+      this.level++;
+      msg = "Lv." + (this.level + 1) + "  " + WEAPONS[this.level].name + "！";
+    } else {
+      this.playerHp = Math.min(PLAYER_MAX_HP, this.playerHp + 15);
+      msg = "HP 回復！";
+    }
+
+    var t = this.add.text(crab.x, crab.y - 60, msg, {
+      fontFamily: FONT, fontSize: "22px", color: "#ffd24d", fontStyle: "bold"
+    }).setOrigin(0.5);
+    this.tweens.add({
+      targets: t, y: t.y - 50, alpha: 0, duration: 900,
+      onComplete: function () { t.destroy(); }
+    });
+
+    this.refreshUi();
+  },
+
+  // 簡易エフェクト（四角い粒を飛ばす）
+  popDots: function (x, y, color, count) {
+    for (var i = 0; i < count; i++) {
+      var a = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      var r = Phaser.Math.Between(16, 46);
+      var d = this.add.image(x, y, "dot").setTint(color);
+      this.tweens.add({
+        targets: d,
+        x: x + Math.cos(a) * r,
+        y: y + Math.sin(a) * r,
+        alpha: 0, scale: 0.2, duration: Phaser.Math.Between(180, 340),
+        onComplete: function (tw, targets) { targets[0].destroy(); }
+      });
+    }
+  },
+
+  // 栗の炸裂
+  burstKuri: function (b) {
+    this.popDots(b.x, b.y, 0xefe0c0, 10);
+    var count = 7;
+    // サルの方向を中心に扇状へ飛ばす
+    var base = Phaser.Math.Angle.Between(b.x, b.y, this.monkey.x, this.monkey.y);
+    var spread = Phaser.Math.DegToRad(30);
+    for (var i = 0; i < count; i++) {
+      var ang = base - spread + (spread * 2 / (count - 1)) * i;
+      var s = this.playerBullets.create(b.x, b.y, "b_kuri_s");
+      s.body.setAllowGravity(false);
+      s.setData("type", "kuri_s");
+      s.setData("damage", 15);
+      this.physics.velocityFromRotation(ang, 470, s.body.velocity);
+    }
+    b.destroy();
+  },
+
+  // ---------------------------------------------------------
+  // 決着
+  // ---------------------------------------------------------
+  finish: function (win) {
+    if (this.gameOver) { return; }
+    this.gameOver = true;
+    this.physics.pause();
+
+    var self = this;
+    this.cameras.main.shake(300, 0.012);
+    this.popDots(win ? this.monkey.x : this.crab.x, win ? this.monkey.y : this.crab.y, 0xffffff, 30);
+
+    this.time.delayedCall(900, function () {
+      self.scene.start("Result", {
+        win: win,
+        monkeyHp: self.monkeyHp,
+        playerHp: self.playerHp,
+        timeLeft: self.timeLeft,
+        level: self.level
+      });
+    });
+  },
+
+  // ---------------------------------------------------------
+  // 毎フレーム
+  // ---------------------------------------------------------
+  update: function (time, delta) {
+    var dt = delta / 1000;
+
+    // 背景の星を流す
+    this.starLayer.getChildren().forEach(function (s) {
+      s.y += s.speed * dt;
+      if (s.y > H) { s.y = 0; s.x = Phaser.Math.Between(0, W); }
+    });
+
+    if (this.gameOver) { return; }
+
+    // --- カニの移動 ---
+    var speed = 380;
+    var left = this.cursors.left.isDown || this.keyA.isDown;
+    var right = this.cursors.right.isDown || this.keyD.isDown;
+    if (left && !right) {
+      this.crab.setVelocityX(-speed);
+    } else if (right && !left) {
+      this.crab.setVelocityX(speed);
+    } else {
+      this.crab.setVelocityX(0);
+    }
+
+    // --- ショット ---
+    if (this.cursors.space.isDown) {
+      this.playerFire(time);
+    }
+
+    // --- サルの往復移動 ---
+    if (this.monkey.x < 70 && this.monkey.body.velocity.x < 0) {
+      this.monkey.setVelocityX(Math.abs(this.monkey.body.velocity.x));
+    } else if (this.monkey.x > W - 70 && this.monkey.body.velocity.x > 0) {
+      this.monkey.setVelocityX(-Math.abs(this.monkey.body.velocity.x));
+    }
+    // 残りHPが減るほど素早くなる
+    var rate = 1 + (1 - this.monkeyHp / MONKEY_MAX_HP) * 1.2;
+    var vx = this.monkey.body.velocity.x;
+    this.monkey.setVelocityX((vx < 0 ? -1 : 1) * 120 * rate);
+    this.monkey.y = MONKEY_Y + Math.sin(time / 400) * 18;
+
+    // --- 自機弾の処理 ---
+    var self = this;
+    this.playerBullets.getChildren().slice().forEach(function (b) {
+      if (!b.active) { return; }
+
+      // ホーミング（ハチ）
+      if (b.getData("homing")) {
+        var target = Phaser.Math.Angle.Between(b.x, b.y, self.monkey.x, self.monkey.y);
+        var cur = Math.atan2(b.body.velocity.y, b.body.velocity.x);
+        var na = Phaser.Math.Angle.RotateTo(cur, target, 4.5 * dt);
+        self.physics.velocityFromRotation(na, 540, b.body.velocity);
+        b.rotation = na + Math.PI / 2;
+      }
+
+      // 炸裂（栗）
+      if (b.getData("burst") && b.y < self.monkey.y + 85) {
+        self.burstKuri(b);
+        return;
+      }
+
+      // 画面外で破棄
+      if (b.y < -80 || b.y > H + 80 || b.x < -80 || b.x > W + 80) {
+        b.destroy();
+      }
+    });
+
+    // --- 敵弾の処理 ---
+    this.enemyBullets.getChildren().slice().forEach(function (b) {
+      if (!b.active) { return; }
+      if (b.y > H + 40 || b.y < -40 || b.x < -40 || b.x > W + 40) { b.destroy(); }
+    });
+
+    // --- アイテムの処理 ---
+    this.items.getChildren().slice().forEach(function (it) {
+      if (!it.active) { return; }
+      if (it.x < 20 || it.x > W - 20) { it.setVelocityX(-it.body.velocity.x); }
+      if (it.y > H + 40) { it.destroy(); }
+    });
+  }
+});
+
+// ============================================================
+// リザルト
+// ============================================================
+var ResultScene = new Phaser.Class({
+  Extends: Phaser.Scene,
+  initialize: function ResultScene() {
+    Phaser.Scene.call(this, { key: "Result" });
+  },
+
+  init: function (data) {
+    this.result = data || {};
+  },
+
+  create: function () {
+    var d = this.result;
+    var win = !!d.win;
+
+    this.add.rectangle(W / 2, H / 2, W, H, win ? 0x101c2e : 0x2a1216);
+
+    this.add.text(W / 2, 180, win ? "勝利！" : "敗北…", {
+      fontFamily: FONT, fontSize: "72px", fontStyle: "bold",
+      color: win ? "#ffd24d" : "#ff6b6b"
+    }).setOrigin(0.5);
+
+    var sub;
+    if (win && d.monkeyHp <= 0) {
+      sub = "サルを討ち取った。かに一族の仇は取ったで。";
+    } else if (win) {
+      sub = "時間切れ。せやけどサルは瀕死や。判定勝ちや！";
+    } else if (d.playerHp <= 0) {
+      sub = "カニ、力尽きる。青柿が痛すぎたな…";
+    } else {
+      sub = "時間切れ。サルはまだピンピンしとる。";
+    }
+    this.add.text(W / 2, 250, sub, {
+      fontFamily: FONT, fontSize: "20px", color: "#cfd6e4", align: "center",
+      wordWrap: { width: 520 }
+    }).setOrigin(0.5);
+
+    this.add.image(W / 2, 380, win ? "crab" : "monkey").setScale(win ? 2.2 : 1.2);
+
+    var stats = [
+      "サル残HP : " + Math.max(0, Math.ceil(d.monkeyHp)) + " / " + MONKEY_MAX_HP,
+      "カニ残HP : " + Math.max(0, Math.ceil(d.playerHp)) + " / " + PLAYER_MAX_HP,
+      "残り時間 : " + Math.ceil(d.timeLeft) + " 秒",
+      "最終武器 : Lv." + ((d.level || 0) + 1) + " " + WEAPONS[d.level || 0].name
+    ];
+    this.add.text(W / 2, 500, stats.join("\n"), {
+      fontFamily: FONT, fontSize: "20px", color: "#ffffff", align: "center", lineSpacing: 10
+    }).setOrigin(0.5, 0);
+
+    var again = this.add.text(W / 2, 700, "SPACE キーでもう一戦", {
+      fontFamily: FONT, fontSize: "24px", color: "#ffffff", fontStyle: "bold"
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: again, alpha: 0.2, duration: 700, yoyo: true, repeat: -1 });
+
+    this.input.keyboard.once("keydown-SPACE", function () {
+      this.scene.start("Game");
+    }, this);
+  }
+});
+
+// ============================================================
+// 起動
+// ============================================================
+window.game = new Phaser.Game({
+  type: Phaser.AUTO,
+  parent: "game",
+  width: W,
+  height: H,
+  backgroundColor: "#0d1220",
+  physics: {
+    default: "arcade",
+    arcade: { gravity: { y: 0 }, debug: false }
+  },
+  scene: [TitleScene, GameScene, ResultScene]
+});
+</script>
+</body>
+</html>
