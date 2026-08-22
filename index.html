@@ -222,7 +222,7 @@ var TitleScene = new Phaser.Class({
 
     var lines = [
       "← →  カニを左右に移動",
-      "SPACE  ショット",
+      "ショットは自動発射",
       "",
       "オレンジの熟した柿を取ると武器がパワーアップ",
       "緑の青柿に当たるとHPが減る",
@@ -643,10 +643,8 @@ var GameScene = new Phaser.Class({
       this.crab.setVelocityX(0);
     }
 
-    // --- ショット ---
-    if (this.cursors.space.isDown) {
-      this.playerFire(time);
-    }
+    // --- ショット（自動発射） ---
+    this.playerFire(time);
 
     // --- サルの往復移動 ---
     if (this.monkey.x < 70 && this.monkey.body.velocity.x < 0) {
