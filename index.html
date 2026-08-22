@@ -41,7 +41,10 @@ var H = 800;
 
 var MONKEY_MAX_HP = 4000;
 var PLAYER_MAX_HP = 100;
-var MAX_FAN_BULLETS = 8;          // サルの扇状弾のばらまき上限
+var KAKI_DAMAGE = 14;             // 青柿（ばらまき）のダメージ
+var KAKI_AIMED_DAMAGE = 20;       // 青柿（狙い撃ち）のダメージ
+var FAN_BULLETS_MIN = 2;          // サルの扇状弾の初期数
+var MAX_FAN_BULLETS = 6;          // サルの扇状弾のばらまき上限
 
 var MONKEY_Y = 155;               // サルの基準Y
 var BAR_W = 560;                  // HPバーの最大幅
@@ -357,7 +360,7 @@ var GameScene = new Phaser.Class({
       delay: 820, loop: true, callback: this.monkeyFire, callbackScope: this
     });
     this.aimEvent = this.time.addEvent({
-      delay: 1700, loop: true, callback: this.monkeyAimedFire, callbackScope: this
+      delay: 2400, loop: true, callback: this.monkeyAimedFire, callbackScope: this
     });
     // 熟柿の投下
     this.itemEvent = this.time.addEvent({
@@ -468,7 +471,7 @@ var GameScene = new Phaser.Class({
   monkeyFire: function () {
     if (this.gameOver) { return; }
     // 扇状にばらまく
-    var n = Math.min(MAX_FAN_BULLETS, 3 + Math.floor(this.elapsed / 20));
+    var n = Math.min(MAX_FAN_BULLETS, FAN_BULLETS_MIN + Math.floor(this.elapsed / 25));
     for (var i = 0; i < n; i++) {
       var ang = Phaser.Math.DegToRad(Phaser.Math.Between(60, 120));
       var speed = Phaser.Math.Between(180, 300);
@@ -477,7 +480,7 @@ var GameScene = new Phaser.Class({
       );
       b.body.setAllowGravity(false);
       b.setVelocity(Math.cos(ang) * speed, Math.sin(ang) * speed);
-      b.setData("damage", 7);
+      b.setData("damage", KAKI_DAMAGE);
     }
   },
 
@@ -492,7 +495,7 @@ var GameScene = new Phaser.Class({
       b.setScale(1.3);
       b.setTint(0x39c14a);
       this.physics.velocityFromRotation(ang, 340, b.body.velocity);
-      b.setData("damage", 10);
+      b.setData("damage", KAKI_AIMED_DAMAGE);
     }
   },
 
@@ -540,7 +543,7 @@ var GameScene = new Phaser.Class({
     bullet.destroy();
     if (this.time.now < this.invincibleUntil) { return; }
 
-    this.playerHp -= (bullet.getData("damage") || 7);
+    this.playerHp -= (bullet.getData("damage") || KAKI_DAMAGE);
     this.invincibleUntil = this.time.now + 700;
     this.popDots(crab.x, crab.y, 0xff6b6b, 8);
     this.cameras.main.shake(120, 0.008);
