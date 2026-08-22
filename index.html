@@ -41,8 +41,7 @@ var H = 800;
 
 var MONKEY_MAX_HP = 4000;
 var PLAYER_MAX_HP = 100;
-var TIME_LIMIT = 60;              // 制限時間（秒）
-var WIN_HP_RATE_ON_TIMEUP = 0.3;  // 時間切れ時、この割合以下なら勝利
+var MAX_FAN_BULLETS = 8;          // サルの扇状弾のばらまき上限
 
 var MONKEY_Y = 155;               // サルの基準Y
 var BAR_W = 560;                  // HPバーの最大幅
@@ -55,6 +54,12 @@ var WEAPONS = [
   { name: "栗",      cooldown: 520, desc: "サル付近で炸裂" },
   { name: "ウス",    cooldown: 700, desc: "青柿を消しながら進む" }
 ];
+
+// 経過秒数を mm:ss 表記にする
+function formatTime(sec) {
+  var s = Math.max(0, Math.floor(sec));
+  return ("0" + Math.floor(s / 60)).slice(-2) + ":" + ("0" + (s % 60)).slice(-2);
+}
 
 // ============================================================
 // テクスチャ生成（画像素材を使わず Graphics で描く）
@@ -231,15 +236,11 @@ var TitleScene = new Phaser.Class({
     var lines = [
       "← →  カニを左右に移動",
       "スマホは画面の左半分／右半分をタップし続けて移動",
-      "ショットは自動発射",
       "",
       "オレンジの熟した柿を取ると武器がパワーアップ",
       "緑の青柿に当たるとHPが減る",
       "",
-      "Lv.1 牛の糞  /  Lv.2 ハチ  /  Lv.3 栗  /  Lv.4 ウス",
-      "",
-      "制限時間 60秒。サルのHPを削り切れば勝利。",
-      "時間切れでもサルのHPが3割以下なら勝利や。"
+      "Lv.1 牛の糞  /  Lv.2 ハチ  /  Lv.3 栗  /  Lv.4 ウス"
     ];
     this.add.text(W / 2, 490, lines.join("\n"), {
       fontFamily: FONT, fontSize: "16px", color: "#cfd6e4", align: "center", lineSpacing: 4
@@ -275,7 +276,7 @@ var GameScene = new Phaser.Class({
     this.monkeyHp = MONKEY_MAX_HP;
     this.playerHp = PLAYER_MAX_HP;
     this.level = 0;              // 0..3 で WEAPONS のインデックス
-    this.timeLeft = TIME_LIMIT;
+    this.elapsed = 0;             // 経過秒数
     this.lastShot = 0;
     this.invincibleUntil = 0;
     this.gameOver = false;
@@ -364,18 +365,13 @@ var GameScene = new Phaser.Class({
     });
     this.time.delayedCall(2500, this.dropRipeKaki, [], this);
 
-    // --- 秒カウント ---
+    // --- 秒カウント（決着は HP のみ。経過時間は難易度と記録に使う） ---
     this.secondEvent = this.time.addEvent({
       delay: 1000, loop: true, callback: function () {
         if (self.gameOver) { return; }
-        self.timeLeft--;
-        if (self.timeLeft <= 0) {
-          self.timeLeft = 0;
-          self.finish(self.monkeyHp <= MONKEY_MAX_HP * WIN_HP_RATE_ON_TIMEUP);
-        }
+        self.elapsed++;
         // 時間が経つほど弾幕が濃くなる
-        var elapsed = TIME_LIMIT - self.timeLeft;
-        self.fireEvent.delay = Math.max(320, 820 - elapsed * 9);
+        self.fireEvent.delay = Math.max(320, 820 - self.elapsed * 9);
       }
     });
   },
@@ -392,7 +388,7 @@ var GameScene = new Phaser.Class({
     this.add.rectangle(W / 2, 36, 564, 14, 0x000000).setStrokeStyle(2, 0x555f78);
     this.monkeyHpBar = this.add.rectangle(20, 36, BAR_W, 10, 0xff4d4d).setOrigin(0, 0.5);
 
-    // --- 残り時間 ---
+    // --- 経過時間 ---
     this.timerText = this.add.text(W / 2, 52, "", {
       fontFamily: FONT, fontSize: "26px", color: "#ffd24d", fontStyle: "bold"
     }).setOrigin(0.5, 0);
@@ -418,8 +414,7 @@ var GameScene = new Phaser.Class({
     this.playerHpBar.width = BAR_W * pr;
     this.playerHpBar.fillColor = pr > 0.4 ? 0x4dd2ff : 0xff6b6b;
 
-    this.timerText.setText(("00" + Math.ceil(this.timeLeft)).slice(-2));
-    this.timerText.setColor(this.timeLeft <= 10 ? "#ff6b6b" : "#ffd24d");
+    this.timerText.setText(formatTime(this.elapsed));
 
     var w = WEAPONS[this.level];
     this.weaponText.setText("Lv." + (this.level + 1) + " " + w.name);
@@ -475,7 +470,7 @@ var GameScene = new Phaser.Class({
   monkeyFire: function () {
     if (this.gameOver) { return; }
     // 扇状にばらまく
-    var n = 3 + Math.floor((TIME_LIMIT - this.timeLeft) / 20);
+    var n = Math.min(MAX_FAN_BULLETS, 3 + Math.floor(this.elapsed / 20));
     for (var i = 0; i < n; i++) {
       var ang = Phaser.Math.DegToRad(Phaser.Math.Between(60, 120));
       var speed = Phaser.Math.Between(180, 300);
@@ -640,7 +635,7 @@ var GameScene = new Phaser.Class({
         win: win,
         monkeyHp: self.monkeyHp,
         playerHp: self.playerHp,
-        timeLeft: self.timeLeft,
+        elapsed: self.elapsed,
         level: self.level
       });
     });
@@ -767,16 +762,9 @@ var ResultScene = new Phaser.Class({
       color: win ? "#ffd24d" : "#ff6b6b"
     }).setOrigin(0.5);
 
-    var sub;
-    if (win && d.monkeyHp <= 0) {
-      sub = "サルを討ち取った。かに一族の仇は取ったで。";
-    } else if (win) {
-      sub = "時間切れ。せやけどサルは瀕死や。判定勝ちや！";
-    } else if (d.playerHp <= 0) {
-      sub = "カニ、力尽きる。青柿が痛すぎたな…";
-    } else {
-      sub = "時間切れ。サルはまだピンピンしとる。";
-    }
+    var sub = win
+      ? "サルを討ち取った。かに一族の仇は取ったで。"
+      : "カニ、力尽きる。青柿が痛すぎたな…";
     this.add.text(W / 2, 250, sub, {
       fontFamily: FONT, fontSize: "20px", color: "#cfd6e4", align: "center",
       wordWrap: { width: 520 }
@@ -787,7 +775,7 @@ var ResultScene = new Phaser.Class({
     var stats = [
       "サル残HP : " + Math.max(0, Math.ceil(d.monkeyHp)) + " / " + MONKEY_MAX_HP,
       "カニ残HP : " + Math.max(0, Math.ceil(d.playerHp)) + " / " + PLAYER_MAX_HP,
-      "残り時間 : " + Math.ceil(d.timeLeft) + " 秒",
+      "経過時間 : " + formatTime(d.elapsed || 0),
       "最終武器 : Lv." + ((d.level || 0) + 1) + " " + WEAPONS[d.level || 0].name
     ];
     this.add.text(W / 2, 500, stats.join("\n"), {
